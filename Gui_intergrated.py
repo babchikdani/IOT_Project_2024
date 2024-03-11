@@ -74,19 +74,15 @@ class RadarControlApp:
             # Read the response
             # for item in self.getstrings(ser):
             #     print(item)
-            incoming_data = ser.read(ser.in_waiting)
-            print('Received:', incoming_data.decode())
+            incoming_data = ser.read(7).decode()
+            ser.flushInput()
+            ser.flushOutput()
+            
+            # dist, self.current_angle = incoming_data.split('_')
+            self.current_angle = int(incoming_data.split('_')[1])
+            return int(incoming_data.split('_')[0])
         
-    def getstrings(self, port):
-        buf = bytearray()
-        while True:
-            b = port.read(1)
-            if b == b'\x02':
-                del buf[:]
-            elif b == b'\x03':
-                yield buf.decode('ascii')
-            else:
-                buf.append(b)
+        return 0
     
     def start_scan(self):
         if not self.scanning:
@@ -107,8 +103,11 @@ class RadarControlApp:
     def update_radar_display(self):
         if self.scanning:
             # Simulate radar scan motion (single sweep line)
-            self.read_uart()
-
+            dist = self.read_uart()
+            
+            if int(dist) > 0:
+                print(f"Found bject in dist:{dist}, and angle:{self.current_angle}")
+            
             x = 150 + 120 * math.cos(math.radians(self.current_angle))
             y = 150 - 120 * math.sin(math.radians(self.current_angle))  # Adjusted for upper side
             self.radar_canvas.delete("line")  # Clear previous line

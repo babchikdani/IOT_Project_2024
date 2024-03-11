@@ -36,9 +36,10 @@ inline void send_to_pc(string str){
   for(int k=0; k<str.size(); k++){
     Serial.write(str[k]);
   }
+  // delay(100);
 }
 
-inline uint16_t read_distance(){
+inline int read_distance(){
   uint8_t buf[9] = {0}; // An array that holds data
   uint16_t distance;
   if (lidarSerial.available() > 0) {
@@ -51,7 +52,7 @@ inline uint16_t read_distance(){
     }
   }
   delay(10);
-  return distance;
+  return int(distance);
 }
 
 inline void print_sys_metrics(){
@@ -96,9 +97,15 @@ inline void blink_times(int n){
   }
 }
 
-inline string build_string(uint16_t dist, uint16_t angle){
+inline string build_string(int dist, int angle){
   string tmp_dist = std::to_string(dist);
+  while(tmp_dist.size() < 3){
+    tmp_dist = "0"+tmp_dist;
+  }
   string tmp_angle = std::to_string(angle);
+    while(tmp_angle.size() < 3){
+    tmp_angle = "0"+tmp_angle;
+  }
   return tmp_dist+"_"+tmp_angle;
 }
 
@@ -121,7 +128,7 @@ void loop() {
   // } else { // we're on.
     blink_times(10);
     // sweep left
-    uint16_t cur_dist;
+    int cur_dist;
     for(int pos=0; pos<=180; pos++){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
