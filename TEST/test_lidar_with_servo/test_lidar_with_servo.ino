@@ -36,17 +36,21 @@ inline void move_servo_to(int pos){
 }
 
 
+inline void servo_init(){
+    ESP32PWM::allocateTimer(0);
+	  ESP32PWM::allocateTimer(1);
+	  ESP32PWM::allocateTimer(2);
+	  ESP32PWM::allocateTimer(3);
+	  myservo.setPeriodHertz(50);    // standard 50 hz servo
+	  myservo.attach(servoPin, SERVO_MIN_PWM, SERVO_MAX_PWM); // attaches the servo on pin 18 to the servo object
+}
+
 
 void setup() {
   Serial.begin(115200); // Initializing serial port
   lidarSerial.begin(115200, SERIAL_8N1, RXD2, TXD2); // Initializing serial port for lidar.
   // servo init:
-  ESP32PWM::allocateTimer(0);
-	ESP32PWM::allocateTimer(1);
-	ESP32PWM::allocateTimer(2);
-	ESP32PWM::allocateTimer(3);
-	myservo.setPeriodHertz(50);    // standard 50 hz servo
-	myservo.attach(servoPin, SERVO_MIN_PWM, SERVO_MAX_PWM); // attaches the servo on pin 18 to the servo object
+  servo_init();
 }
 
 void loop() {
