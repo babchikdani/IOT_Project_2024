@@ -7,6 +7,8 @@ import time
 
 ser = serial.Serial('COM5', 115200)  # Change 'COMX' to your ESP32's UART port
 
+ser.flushInput()
+ser.flushOutput()
 
 def send_metrics(speed=1, min_angle=0, max_angle=180, min_dist=1, max_dist=8, start_stop=1):
     byte_array = [speed, min_angle, max_angle, min_dist, max_dist, start_stop]
@@ -14,7 +16,7 @@ def send_metrics(speed=1, min_angle=0, max_angle=180, min_dist=1, max_dist=8, st
     while True:
         ser.write(data_to_send)
         print(f'{time.time()}, Data sent successfully.')
-        time.sleep(1)
+        time.sleep(0.5)
 
         # Check if there's any response from the device
         if ser.in_waiting > 0:
@@ -22,7 +24,8 @@ def send_metrics(speed=1, min_angle=0, max_angle=180, min_dist=1, max_dist=8, st
             response = ser.readline().strip()
             print("Received:", response)
 
-            # Process the response
+            # Process the response here
+            # Example: If response is 'OK', break the loop
             if response != '':
                 print("Received confirmation. Exiting loop.")
                 break
@@ -65,28 +68,47 @@ class RadarControlApp:
         x = 150 + 120 * math.cos(math.radians(self.current_angle))
         y = 150 - 120 * math.sin(math.radians(self.current_angle))  # Adjusted for upper side
         self.radar_canvas.create_line(150, 150, x, y, fill="green", width=2, tags="line")
-
+    
+    def read_uart(self):
+        if ser.in_waiting > 0:
+            # Read the response
+            # for item in self.getstrings(ser):
+            #     print(item)
+            incoming_data = ser.read(ser.in_waiting)
+            print('Received:', incoming_data.decode())
+        
+    def getstrings(self, port):
+        buf = bytearray()
+        while True:
+            b = port.read(1)
+            if b == b'\x02':
+                del buf[:]
+            elif b == b'\x03':
+                yield buf.decode('ascii')
+            else:
+                buf.append(b)
+    
     def start_scan(self):
         if not self.scanning:
             # Start radar scanning logic here
             print("Radar scanning started.")
             self.scanning = True
             self.update_radar_display()
+            
+            self.current_angle += 1
 
     def stop_scan(self):
         if self.scanning:
             # Stop radar scanning logic here
             print("Radar scanning stopped.")
             self.scanning = False
+            self.update_radar_display()
 
     def update_radar_display(self):
         if self.scanning:
             # Simulate radar scan motion (single sweep line)
-            self.current_angle += self.scan_direction * self.speed_scale.get()
-            if self.current_angle >= (180 - (90 - (self.angle_scale.get() / 2))):
-                self.scan_direction = -1
-            elif self.current_angle <= (0 + (90 - (self.angle_scale.get() / 2))):
-                self.scan_direction = 1 # Reversed direction
+            self.read_uart()
+
             x = 150 + 120 * math.cos(math.radians(self.current_angle))
             y = 150 - 120 * math.sin(math.radians(self.current_angle))  # Adjusted for upper side
             self.radar_canvas.delete("line")  # Clear previous line
@@ -94,7 +116,7 @@ class RadarControlApp:
             self.root.update()  # Update the display
             self.root.after(50, self.update_radar_display)  # Recursive call for animation
 
-        send_metrics()  # try to send
+        # send_metrics()  # try to send
 
 
 if __name__ == "__main__":
