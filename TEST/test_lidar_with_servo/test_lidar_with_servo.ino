@@ -16,16 +16,18 @@ HardwareSerial lidarSerial(2); // Using serial port 2
 // The builtin method for the TFMini-S for reading a distance. 
 inline uint16_t read_distance(){
   uint8_t buf[9] = {0}; // An array that holds data
+  uint16_t distance;
   if (lidarSerial.available() > 0) {
     lidarSerial.readBytes(buf, 9); // Read 9 bytes of data
     if( buf[0] == 0x59 && buf[1] == 0x59)
     {
-      uint16_t distance = buf[2] + buf[3] * 256;
+      distance = buf[2] + buf[3] * 256;
       //uint16_t strength = buf[4] + buf[5] * 256;    // no need for this test
       //int16_t temperature = buf[6] + buf[7] * 256;  // no need for this test
     }
   }
   delay(10);
+  return distance;
 }
 
 inline void move_servo_to(int pos){
