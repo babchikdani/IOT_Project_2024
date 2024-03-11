@@ -7,10 +7,6 @@ HardwareSerial lidarSerial(2); // Using serial port 2
 void setup() {
   Serial.begin(115200); // Initializing serial port
   lidarSerial.begin(115200, SERIAL_8N1, RXD2, TXD2); // Initializing serial port
-  	ESP32PWM::allocateTimer(0);
-	ESP32PWM::allocateTimer(1);
-	ESP32PWM::allocateTimer(2);
-	ESP32PWM::allocateTimer(3);
 }
 
 void loop() {
