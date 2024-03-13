@@ -8,8 +8,11 @@ using std::string;
 Servo myservo;
 int servoPin = 15;
 
-#define RXD2 13
-#define TXD2 12
+#define ROOM_SCAN_DONE_SIGNAL "Room Scan Done!\n"
+#define BAUD_RATE 115200
+#define FLASHLIGHT_PIN 23
+#define RX_PIN 16
+#define TX_PIN 17
 #define SERVO_MIN_PWM 544
 #define SERVO_MAX_PWM 2400
 #define STOP 0
@@ -19,24 +22,35 @@ int servoPin = 15;
 #define LiDAR_MIN_DISTANCE 30 // in cm
 #define INT_MAX 2147483647
 #define UINT16_T_MAX 65535
-#define NUM_OF_PC_INPUTS 6 
-
+#define NUM_OF_PC_INPUTS 8
+#define BUFFER_SIZE 1024
+#define FULL_SCAN 181
 HardwareSerial lidarSerial(2); // Using serial port 2
 
-uint8_t sys_speed=1;     // metrics[0]
-uint8_t sys_max_angle=180; // metrics[1], in degrees.
-uint8_t sys_min_angle=0; // metrics[2], in degrees.
-uint8_t sys_max_dist=700;  // metrics[3], in centimeters.
-uint8_t sys_min_dist=50;  // metrics[4], in centimeters.
-uint8_t sys_start_cmd=1; // metrics[5], 1 to start. 0 to stop.
+int sys_speed=1;     // 1, 2, or 3.
+int sys_max_angle=180; // in degrees.
+int sys_min_angle=0; // in degrees.
+int sys_max_dist=700;  // in centimeters.
+int sys_min_dist=50;  // in centimeters.
+int sys_start_cmd=0; // 1 to start. 0 to stop. 2 for room scan.
 uint8_t metrics[NUM_OF_PC_INPUTS];
+int room_distances[FULL_SCAN];
+int last_scan[FULL_SCAN];
 
 
 inline void send_to_pc(string str){
   for(int k=0; k<str.size(); k++){
     Serial.write(str[k]);
   }
-  // delay(100);
+  // Serial.write("\n");
+  delay(50);
+}
+
+inline void room_scan(){
+  for(int pos=0; pos<FULL_SCAN; pos++){
+    move_servo_to(pos);
+    room_distances[pos] = read_distance();
+  }
 }
 
 inline int read_distance(){
@@ -55,19 +69,14 @@ inline int read_distance(){
   return int(distance);
 }
 
-inline void print_sys_metrics(){
-  Serial.print("sys_speed = ");
-  Serial.println(sys_speed);
-  Serial.print("sys_max_angle = ");
-  Serial.println(sys_max_angle);
-  Serial.print("sys_min_angle = ");
-  Serial.println(sys_min_angle);
-  Serial.print("sys_max_dist = ");
-  Serial.println(sys_max_dist);
-  Serial.print("sys_min_dist = ");
-  Serial.println(sys_min_dist);
-  Serial.print("sys_start_cmd = ");
-  Serial.println(sys_start_cmd);
+inline void send_sys_metrics(){
+  string tmp_str = "sys_speed = " + std::to_string(sys_speed) + "\n";
+  tmp_str += "sys_max_angle = " + std::to_string(sys_max_angle) + "\n";
+  tmp_str += "sys_min_angle = " + std::to_string(sys_min_angle) + "\n";
+  tmp_str += "sys_max_dist = " + std::to_string(sys_max_dist) + "\n";
+  tmp_str += "sys_min_dist = " + std::to_string(sys_min_dist) + "\n";
+  tmp_str += "sys_start_cmd = " + std::to_string(sys_start_cmd) + "\n";
+  send_to_pc(tmp_str);
 }
 
 inline void servo_init(){
@@ -83,9 +92,10 @@ inline void update_sys_metrics(){
   sys_speed = metrics[0];
   sys_max_angle = metrics[1];
   sys_min_angle = metrics[2];
-  sys_max_dist = metrics[3];
-  sys_min_dist = metrics[4];
-  sys_start_cmd = metrics[5];
+  // Combine bytes to form the integer
+  sys_max_dist = (metrics[3] << 8) | metrics[4];
+  sys_min_dist = (metrics[5] << 8) | metrics[6];
+  sys_start_cmd = metrics[7];
 }
 
 inline void blink_times(int n){
@@ -97,6 +107,7 @@ inline void blink_times(int n){
   }
 }
 
+// builds a string in a format of xxx_yyy where xxx is the distance, yyy is the angle. Example: distance of 15 cm will be presented as 015 (with the leading zero)
 inline string build_string(int dist, int angle){
   string tmp_dist = std::to_string(dist);
   while(tmp_dist.size() < 3){
@@ -115,17 +126,31 @@ inline void move_servo_to(int pos){
 }
 
 void setup() {
-  Serial.begin(115200); // Initializing serial port
-  lidarSerial.begin(115200, SERIAL_8N1, RXD2, TXD2); // Initializing serial port
+  Serial.begin(BAUD_RATE); // Initializing serial port
+  Serial.setTxBufferSize(BUFFER_SIZE);
+  Serial.setRxBufferSize(BUFFER_SIZE);
+  lidarSerial.begin(BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN); // Initializing serial port
   servo_init();
   pinMode(LED_BUILTIN, OUTPUT);
+  // flashlight init:
+  pinMode(FLASHLIGHT_PIN, OUTPUT);
 }
 
 void loop() {
-  // if(sys_start_cmd == 0){
-  //   digitalWrite(LED_BUILTIN, HIGH);
-  //   delay(500);
-  // } else { // we're on.
+  // room_scan is the sys_start_cmd == 2.
+  if(sys_start_cmd == 2){
+    room_scan();    // updates the room_distances array with the room's measurements. 
+    for(int i=0; i<FULL_SCAN; i++){
+      last_scan[i] = room_distances[i];
+    }
+    send_to_pc(ROOM_SCAN_DONE_SIGNAL);
+    sys_start_cmd = 0;  // move to "standby" mode
+  }
+  if(sys_start_cmd == 0){
+    digitalWrite(LED_BUILTIN, HIGH);
+    while(Serial.available() == 0) {}
+  } 
+  if(sys_start_cmd == 1) { // we're on.
     blink_times(10);
     // sweep left
     int cur_dist;
@@ -135,6 +160,12 @@ void loop() {
       if(cur_dist > sys_min_dist && cur_dist < sys_max_dist){
         string tmp_str = build_string(cur_dist, pos);
         send_to_pc(tmp_str);
+        // auxiliary logic, turn on the flash light when the distance is above 100cm.
+        // if(cur_dist > 100){
+        //   digitalWrite(FLASHLIGHT_PIN, HIGH);
+        // } else {
+        //   digitalWrite(FLASHLIGHT_PIN, LOW);
+        // }
       }
     }
     // sweep right.
@@ -144,22 +175,23 @@ void loop() {
       if(cur_dist > sys_min_dist && cur_dist < sys_max_dist){
         string tmp_str = build_string(cur_dist, pos);
         send_to_pc(tmp_str);
+        // auxiliary logic, turn on the flash light when the distance is above 100cm.
+        // if(cur_dist > 100){
+        //   digitalWrite(FLASHLIGHT_PIN, HIGH);
+        // } else {
+        //   digitalWrite(FLASHLIGHT_PIN, LOW);
+        // }
       }
     }
-  // }
-  //   if(Serial.available() > 0) { // Check if new data is available to read
-  //     delay(300); // for all of the information to arrive by serial communication.
-  //     Serial.readBytes(metrics, NUM_OF_PC_INPUTS);
-  //     update_sys_metrics();
-  //     string str = "recieved new metrics!";
-  //     // send_to_pc(str);
-  //     // print_sys_metrics();
-  //     delay(300);
-  // } else {
-  //   string str = "current sys metrics!";
-  //   // send_to_pc(str);
-  //   // print_sys_metrics();
-  //   delay(300);
-  // }
-
+  }
+  if(Serial.available() > 0) { // Check if new data is available to read
+    delay(100); // wait for all of the information to arrive by serial communication.
+    Serial.readBytes(metrics, NUM_OF_PC_INPUTS);
+    update_sys_metrics();
+    blink_times(3);
+    string str = "recieved new metrics!";
+    send_to_pc(str);
+    // print_sys_metrics();
+    delay(100);
+  }
 }
