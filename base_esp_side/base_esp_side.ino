@@ -109,15 +109,16 @@ inline void blink_times(int n){
 
 // builds a string in a format of xxx_yyy where xxx is the distance, yyy is the angle. Example: distance of 15 cm will be presented as 015 (with the leading zero)
 inline string build_string(int dist, int angle){
-  string tmp_dist = std::to_string(dist);
-  while(tmp_dist.size() < 3){
-    tmp_dist = "0"+tmp_dist;
+  string dist_str = std::to_string(dist);
+  // fill zeros if needed.
+  while(dist_str.size() < 3){
+    dist_str = "0"+dist_str;
   }
-  string tmp_angle = std::to_string(angle);
-    while(tmp_angle.size() < 3){
-    tmp_angle = "0"+tmp_angle;
+  string angle_str = std::to_string(angle);
+    while(angle_str.size() < 3){
+    angle_str = "0"+angle_str;
   }
-  return tmp_dist+"_"+tmp_angle;
+  return dist_str+"_"+angle_str+"\n";   // DISTANCE_ANGLE_NUM_OF_BYTES is 8
 }
 
 inline void move_servo_to(int pos){
@@ -154,7 +155,7 @@ void loop() {
     blink_times(10);
     // sweep left
     int cur_dist;
-    for(int pos=0; pos<=180; pos++){
+    for(int pos=sys_min_angle; pos<=sys_max_angle; pos++){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
       if(cur_dist > sys_min_dist && cur_dist < sys_max_dist){
@@ -169,7 +170,7 @@ void loop() {
       }
     }
     // sweep right.
-    for(int pos=180; pos>=0; pos--){
+    for(int pos=sys_max_angle; pos>=sys_min_angle; pos--){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
       if(cur_dist > sys_min_dist && cur_dist < sys_max_dist){
@@ -189,8 +190,8 @@ void loop() {
     Serial.readBytes(metrics, NUM_OF_PC_INPUTS);
     update_sys_metrics();
     blink_times(3);
-    string str = "recieved new metrics!";
-    send_to_pc(str);
+    // string str = "recieved new metrics!";
+    // send_to_pc(str);
     // print_sys_metrics();
     delay(100);
   }

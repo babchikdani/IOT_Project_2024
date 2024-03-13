@@ -14,6 +14,7 @@ ROOM_SCAN_DONE_SIGNAL = 'Room Scan Done!\n'
 STOP_CMD = 0
 START_CMD = 1
 ROOM_SCAN_CMD = 2
+DISTANCE_ANGLE_NUM_OF_BYTES = 8
 
 ser = serial.Serial('COM5', BAUD_RATE)  # Change 'COMX' to your ESP32's UART port
 ser.flushInput()
@@ -129,22 +130,12 @@ class RadarControlApp:
             self.radar_canvas.create_text(CENTER_X, 500-radius-5, text=f"{i}m", fill="green", font=("Arial", 8, "bold"))
 
     def read_uart(self):
-        # while ser.in_waiting != 7:
-        #     continue
-        if ser.in_waiting > 0:
-            # Read the response
-            # for item in self.getstrings(ser):
-            #     print(item)
-            incoming_data = ser.read(7).decode()
-            # ser.flushInput()
-            # time.sleep(0.5)
-            # ser.flushOutput()
-            
-            # dist, self.current_angle = incoming_data.split('_')
-            self.current_angle = int(incoming_data.split('_')[1])
-            return int(incoming_data.split('_')[0])
-        
-        return 0
+        while ser.in_waiting < DISTANCE_ANGLE_NUM_OF_BYTES:
+            continue
+        incoming_data = ser.readline().decode()
+        read_data = incoming_data.split('_')      # remove the '\n' in the back
+        self.current_angle = int(read_data[1][:-1])
+        return int(read_data[0])
 
     def check_scales_input(self):
         if self.min_angle_scale.get() > self.max_angle_scale.get():
@@ -202,7 +193,7 @@ class RadarControlApp:
         self.radar_canvas.create_text(40, 20, text="Standby", fill="green", font=("Arial", 10, "bold"), tags="standby")
 
     def start_scan(self):
-        ser.flushInput()
+        # ser.flushInput()
         if self.check_scales_input() == 1:
             return
         if not self.scanning:
@@ -235,7 +226,7 @@ class RadarControlApp:
         if self.scanning:
             # Simulate radar scan motion (single sweep line)
             dist = self.read_uart()
-            if int(dist) > 0:
+            if dist > 0:
                 print(f"Found object in dist:{dist}, and angle:{self.current_angle}")
                 x_target = CENTER_X + dist * math.cos(math.radians(self.current_angle))/2
                 y_target = CENTER_Y - dist * math.sin(math.radians(self.current_angle))/2  # Adjusted for upper side
