@@ -7,9 +7,11 @@ using std::string;
 
 Servo myservo;
 int servoPin = 15;
-
+#define NEW_TARGET_FOUND 1
+#define NEW_TARGET_NOT_FOUND 0
 #define ROOM_SCAN_DONE_SIGNAL "Room Scan Done!\n"
-#define BAUD_RATE 115200
+#define LIDAR_BAUD_RATE 115200
+#define SERIAL_BAUD_RATE 115200
 #define FLASHLIGHT_PIN 23
 #define RX_PIN 16
 #define TX_PIN 17
@@ -17,14 +19,12 @@ int servoPin = 15;
 #define SERVO_MAX_PWM 2400
 #define STOP 0
 #define START 1
-#define BAD_READ (-1)
 #define LiDAR_MIN_SIGNAL_STRENGTH 100 
 #define LiDAR_MIN_DISTANCE 30 // in cm
-#define INT_MAX 2147483647
-#define UINT16_T_MAX 65535
 #define NUM_OF_PC_INPUTS 8
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 10000
 #define FULL_SCAN 181
+
 HardwareSerial lidarSerial(2); // Using serial port 2
 
 int sys_speed=1;     // 1, 2, or 3.
@@ -34,8 +34,8 @@ int sys_max_dist=700;  // in centimeters.
 int sys_min_dist=50;  // in centimeters.
 int sys_start_cmd=0; // 1 to start. 0 to stop. 2 for room scan.
 uint8_t metrics[NUM_OF_PC_INPUTS];
-int room_distances[FULL_SCAN];
-int last_scan[FULL_SCAN];
+int room_distances[FULL_SCAN] = {0};
+int last_scan[FULL_SCAN] = {0};
 
 
 inline void send_to_pc(string str){
@@ -43,7 +43,7 @@ inline void send_to_pc(string str){
     Serial.write(str[k]);
   }
   // Serial.write("\n");
-  delay(50);
+  // delay(50);
 }
 
 inline void room_scan(){
@@ -51,6 +51,7 @@ inline void room_scan(){
     move_servo_to(pos);
     room_distances[pos] = read_distance();
   }
+  //TODO: Maybe scan a few times the room in order to ensure that no j index in the room_distance[j] == 0.
 }
 
 inline int read_distance(){
@@ -65,18 +66,8 @@ inline int read_distance(){
       // int16_t temperature = buf[6] + buf[7] * 256;
     }
   }
-  delay(10);
+  delay(20);
   return int(distance);
-}
-
-inline void send_sys_metrics(){
-  string tmp_str = "sys_speed = " + std::to_string(sys_speed) + "\n";
-  tmp_str += "sys_max_angle = " + std::to_string(sys_max_angle) + "\n";
-  tmp_str += "sys_min_angle = " + std::to_string(sys_min_angle) + "\n";
-  tmp_str += "sys_max_dist = " + std::to_string(sys_max_dist) + "\n";
-  tmp_str += "sys_min_dist = " + std::to_string(sys_min_dist) + "\n";
-  tmp_str += "sys_start_cmd = " + std::to_string(sys_start_cmd) + "\n";
-  send_to_pc(tmp_str);
 }
 
 inline void servo_init(){
@@ -108,7 +99,7 @@ inline void blink_times(int n){
 }
 
 // builds a string in a format of xxx_yyy where xxx is the distance, yyy is the angle. Example: distance of 15 cm will be presented as 015 (with the leading zero)
-inline string build_string(int dist, int angle){
+inline string build_string(int dist, int angle, int found){
   string dist_str = std::to_string(dist);
   // fill zeros if needed.
   while(dist_str.size() < 3){
@@ -118,7 +109,7 @@ inline string build_string(int dist, int angle){
     while(angle_str.size() < 3){
     angle_str = "0"+angle_str;
   }
-  return dist_str+"_"+angle_str+"\n";   // DISTANCE_ANGLE_NUM_OF_BYTES is 8
+  return dist_str+"_"+angle_str+"_"+std::to_string(found)+"\n";   // DISTANCE_ANGLE_NUM_OF_BYTES is 8
 }
 
 inline void move_servo_to(int pos){
@@ -127,14 +118,20 @@ inline void move_servo_to(int pos){
 }
 
 void setup() {
-  Serial.begin(BAUD_RATE); // Initializing serial port
   Serial.setTxBufferSize(BUFFER_SIZE);
   Serial.setRxBufferSize(BUFFER_SIZE);
-  lidarSerial.begin(BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN); // Initializing serial port
+  Serial.begin(SERIAL_BAUD_RATE); // Initializing serial port
+  lidarSerial.setRxBufferSize(BUFFER_SIZE);
+  lidarSerial.setTxBufferSize(BUFFER_SIZE);
+  lidarSerial.begin(LIDAR_BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN); // Initializing serial port
   servo_init();
   pinMode(LED_BUILTIN, OUTPUT);
   // flashlight init:
   pinMode(FLASHLIGHT_PIN, OUTPUT);
+}
+
+inline bool is_not_same_object(int cur_dist, int pos) {
+  return cur_dist < 0.98 * room_distances[pos];
 }
 
 void loop() {
@@ -146,53 +143,52 @@ void loop() {
     }
     send_to_pc(ROOM_SCAN_DONE_SIGNAL);
     sys_start_cmd = 0;  // move to "standby" mode
-  }
-  if(sys_start_cmd == 0){
+  } else if(sys_start_cmd == 0){
     digitalWrite(LED_BUILTIN, HIGH);
     while(Serial.available() == 0) {}
-  } 
-  if(sys_start_cmd == 1) { // we're on.
-    blink_times(10);
+  } else if(sys_start_cmd == 1) { // we're on.
+    digitalWrite(LED_BUILTIN, LOW);
     // sweep left
     int cur_dist;
+    blink_times(2);
     for(int pos=sys_min_angle; pos<=sys_max_angle; pos++){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
       if(cur_dist > sys_min_dist && cur_dist < sys_max_dist){
-        string tmp_str = build_string(cur_dist, pos);
-        send_to_pc(tmp_str);
-        // auxiliary logic, turn on the flash light when the distance is above 100cm.
-        // if(cur_dist > 100){
-        //   digitalWrite(FLASHLIGHT_PIN, HIGH);
-        // } else {
-        //   digitalWrite(FLASHLIGHT_PIN, LOW);
-        // }
+        digitalWrite(FLASHLIGHT_PIN, HIGH);
+        string to_send = "";
+        if(is_not_same_object(cur_dist, pos)){
+          to_send = build_string(cur_dist, pos, NEW_TARGET_FOUND);
+        } else { // didn't detect an object at the current angle
+          to_send = build_string(cur_dist, pos, NEW_TARGET_NOT_FOUND);
+        }
+        send_to_pc(to_send);
+      } else {
+        digitalWrite(FLASHLIGHT_PIN, LOW);
       }
+      delay(50);
     }
     // sweep right.
+    blink_times(2);
     for(int pos=sys_max_angle; pos>=sys_min_angle; pos--){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
       if(cur_dist > sys_min_dist && cur_dist < sys_max_dist){
-        string tmp_str = build_string(cur_dist, pos);
-        send_to_pc(tmp_str);
-        // auxiliary logic, turn on the flash light when the distance is above 100cm.
-        // if(cur_dist > 100){
-        //   digitalWrite(FLASHLIGHT_PIN, HIGH);
-        // } else {
-        //   digitalWrite(FLASHLIGHT_PIN, LOW);
-        // }
+        string to_send = "";
+        if(is_not_same_object(cur_dist, pos)){
+          to_send = build_string(cur_dist, pos, NEW_TARGET_FOUND);
+          digitalWrite(FLASHLIGHT_PIN, HIGH);
+        } else { // didn't detect an object at the current angle
+          to_send = build_string(cur_dist, pos, NEW_TARGET_NOT_FOUND);
+          digitalWrite(FLASHLIGHT_PIN, LOW);
+        }
+        send_to_pc(to_send);
       }
     }
+    delay(50);
   }
-  if(Serial.available() > 0) { // Check if new data is available to read
-    delay(100); // wait for all of the information to arrive by serial communication.
+  if(Serial.available() >= NUM_OF_PC_INPUTS) { // Check if new data is available to read
     Serial.readBytes(metrics, NUM_OF_PC_INPUTS);
     update_sys_metrics();
-    blink_times(3);
-    // string str = "recieved new metrics!";
-    // send_to_pc(str);
-    // print_sys_metrics();
-    delay(100);
   }
 }
