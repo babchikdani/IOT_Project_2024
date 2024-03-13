@@ -4,21 +4,19 @@ import serial
 import time
 from tkinter import messagebox
 
-NEW_TARGET_FOUND = 1
 RADAR_WIDTH = 800
 RADAR_HEIGHT = 400
 CENTER_X = RADAR_WIDTH/2
 CENTER_Y = 400
 LINE_LENGTH = 400
-SERIAL_BAUD_RATE = 115200
+BAUD_RATE = 115200
 ROOM_SCAN_DONE_SIGNAL = 'Room Scan Done!\n'
 STOP_CMD = 0
 START_CMD = 1
 ROOM_SCAN_CMD = 2
 DISTANCE_ANGLE_NUM_OF_BYTES = 8
 
-ser = serial.Serial('COM5', SERIAL_BAUD_RATE)  # ESP32's UART port
-ser.set_buffer_size(50000, 50000)
+ser = serial.Serial('COM5', BAUD_RATE)  # Change 'COMX' to your ESP32's UART port
 ser.flushInput()
 ser.flushOutput()
 
@@ -45,6 +43,7 @@ def send_metrics(speed=1, max_angle=180, min_angle=0, max_dist=700, min_dist=50,
     ser.flushOutput()
     ser.write(data_to_send)
     print('Data sent successfully.')
+    time.sleep(0.1)
 
 
 class RadarControlApp:
@@ -64,14 +63,12 @@ class RadarControlApp:
 
         self.max_angle_label = tk.Label(root, text="Maximum Scan Angle:", font=self.label_font)
         self.max_angle_scale = tk.Scale(root, from_=0, to=180, orient="horizontal", resolution=1)
-        self.max_angle_scale.set(180)
 
         self.min_angle_label = tk.Label(root, text="Minimum Scan Angle:", font=self.label_font)
         self.min_angle_scale = tk.Scale(root, from_=0, to=180, orient="horizontal", resolution=1)
 
         self.max_dist_label = tk.Label(root, text="Maximum Scan Distance [cm]:", font=self.label_font)
         self.max_dist_scale = tk.Scale(root, from_=50, to=800, orient="horizontal", resolution=1)
-        self.max_dist_scale.set(800)
 
         self.min_dist_label = tk.Label(root, text="Minimum Scan Distance [cm]:", font=self.label_font)
         self.min_dist_scale = tk.Scale(root, from_=50, to=800, orient="horizontal", resolution=1)
@@ -137,11 +134,8 @@ class RadarControlApp:
             continue
         incoming_data = ser.readline().decode()
         read_data = incoming_data.split('_')      # remove the '\n' in the back
-        dist = int(read_data[0])
-        angle = int(read_data[1])
-        new_target = int(read_data[2][:-1])
-        self.current_angle = angle
-        return dist, new_target
+        self.current_angle = int(read_data[1][:-1])
+        return int(read_data[0])
 
     def check_scales_input(self):
         if self.min_angle_scale.get() > self.max_angle_scale.get():
@@ -179,16 +173,20 @@ class RadarControlApp:
         self.disable_scales()
         # 1. send a start_room_scan to the serial (sys_start_cmd = 2)
         ser.flushOutput()
-        ser.flushInput()
         send_metrics(cmd=ROOM_SCAN_CMD)  # maybe move the send_metrics() to self.send_metrics()
         # Check if there's any response from the device
         time.sleep(5)
         if ser.in_waiting > 0:
-            # Read the response. The response MUST END WITH '\n'!
+            # Read the response. The respone MUST END WITH '\n'!
             time.sleep(0.5)
             response = ser.readline().decode()
             print("Received:", response)
-
+            # Process the response here
+            # Example: If response is 'OK', break the loop
+            if response != ROOM_SCAN_DONE_SIGNAL:
+                print("Received Room Scan confirmation!")
+            else:
+                print('Gibberish')
         print("System ready.")
         self.enable_scales()
         self.radar_canvas.delete("initial_scanning")
@@ -227,15 +225,14 @@ class RadarControlApp:
     def update_radar_display(self):
         if self.scanning:
             # Simulate radar scan motion (single sweep line)
-            dist, new_target = self.read_uart()
-            #TODO: change this
-            if new_target == NEW_TARGET_FOUND or True:
+            dist = self.read_uart()
+            if dist > 0:
                 print(f"Found object in dist:{dist}, and angle:{self.current_angle}")
                 x_target = CENTER_X + dist * math.cos(math.radians(self.current_angle))/2
                 y_target = CENTER_Y - dist * math.sin(math.radians(self.current_angle))/2  # Adjusted for upper side
                 self.radar_canvas.create_oval(x_target - 5, y_target - 5, x_target + 5, y_target + 5, width=2,
                                               fill="red", tags=f"blip_{self.blip_id}")
-                self.root.after(10000, self.radar_canvas.delete, f"blip_{self.blip_id}")
+                self.root.after(5000, self.radar_canvas.delete, f"blip_{self.blip_id}")
                 self.blip_id += 1
             # Update the scan line
             x = CENTER_X + LINE_LENGTH * math.cos(math.radians(self.current_angle))
