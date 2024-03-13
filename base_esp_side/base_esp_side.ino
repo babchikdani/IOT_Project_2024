@@ -17,21 +17,22 @@ int servoPin = 15;
 #define SERVO_MAX_PWM 2400
 #define STOP 0
 #define START 1
-#define BAD_READ (-1)
 #define LiDAR_MIN_SIGNAL_STRENGTH 100 
 #define LiDAR_MIN_DISTANCE 30 // in cm
-#define INT_MAX 2147483647
-#define UINT16_T_MAX 65535
 #define NUM_OF_PC_INPUTS 8
-#define BUFFER_SIZE 1024
 #define FULL_SCAN 181
+#define LIDAR_BAUD_RATE 115200
+#define SERIAL_BAUD_RATE 115200
+#define BUFFER_SIZE 50000
+
+
 HardwareSerial lidarSerial(2); // Using serial port 2
 
-int sys_speed=1;     // 1, 2, or 3.
-int sys_max_angle=180; // in degrees.
+int sys_speed=0;     // 1, 2, or 3.
+int sys_max_angle=0; // in degrees.
 int sys_min_angle=0; // in degrees.
-int sys_max_dist=700;  // in centimeters.
-int sys_min_dist=50;  // in centimeters.
+int sys_max_dist=0;  // in centimeters.
+int sys_min_dist=0;  // in centimeters.
 int sys_start_cmd=0; // 1 to start. 0 to stop. 2 for room scan.
 uint8_t metrics[NUM_OF_PC_INPUTS];
 int room_distances[FULL_SCAN];
@@ -42,8 +43,7 @@ inline void send_to_pc(string str){
   for(int k=0; k<str.size(); k++){
     Serial.write(str[k]);
   }
-  // Serial.write("\n");
-  delay(50);
+  // delay(50);
 }
 
 inline void room_scan(){
@@ -69,16 +69,6 @@ inline int read_distance(){
   return int(distance);
 }
 
-inline void send_sys_metrics(){
-  string tmp_str = "sys_speed = " + std::to_string(sys_speed) + "\n";
-  tmp_str += "sys_max_angle = " + std::to_string(sys_max_angle) + "\n";
-  tmp_str += "sys_min_angle = " + std::to_string(sys_min_angle) + "\n";
-  tmp_str += "sys_max_dist = " + std::to_string(sys_max_dist) + "\n";
-  tmp_str += "sys_min_dist = " + std::to_string(sys_min_dist) + "\n";
-  tmp_str += "sys_start_cmd = " + std::to_string(sys_start_cmd) + "\n";
-  send_to_pc(tmp_str);
-}
-
 inline void servo_init(){
   ESP32PWM::allocateTimer(0);
 	ESP32PWM::allocateTimer(1);
@@ -101,13 +91,13 @@ inline void update_sys_metrics(){
 inline void blink_times(int n){
   for(int ii=0; ii<n; ii++){
     digitalWrite(LED_BUILTIN, HIGH);
-    delay(100);
+    delay(50);
     digitalWrite(LED_BUILTIN, LOW);
-    delay(100);
+    delay(50);
   }
 }
 
-// builds a string in a format of xxx_yyy where xxx is the distance, yyy is the angle. Example: distance of 15 cm will be presented as 015 (with the leading zero)
+// builds a string xxx_yyy where xxx is the distance, yyy is the angle. Example: distance of 15 cm will be presented as 015 (with the leading zero)
 inline string build_string(int dist, int angle){
   string dist_str = std::to_string(dist);
   // fill zeros if needed.
@@ -127,10 +117,12 @@ inline void move_servo_to(int pos){
 }
 
 void setup() {
-  Serial.begin(BAUD_RATE); // Initializing serial port
   Serial.setTxBufferSize(BUFFER_SIZE);
   Serial.setRxBufferSize(BUFFER_SIZE);
-  lidarSerial.begin(BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN); // Initializing serial port
+  Serial.begin(SERIAL_BAUD_RATE); // Initializing serial port
+  // lidarSerial.setRxBufferSize(BUFFER_SIZE);
+  // lidarSerial.setTxBufferSize(BUFFER_SIZE);
+  lidarSerial.begin(LIDAR_BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN); // Initializing serial port
   servo_init();
   pinMode(LED_BUILTIN, OUTPUT);
   // flashlight init:
@@ -152,47 +144,29 @@ void loop() {
     while(Serial.available() == 0) {}
   } 
   if(sys_start_cmd == 1) { // we're on.
-    blink_times(10);
+    blink_times(2);
     // sweep left
     int cur_dist;
     for(int pos=sys_min_angle; pos<=sys_max_angle; pos++){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
-      if(cur_dist > sys_min_dist && cur_dist < sys_max_dist){
+      if((cur_dist > sys_min_dist && cur_dist < sys_max_dist) || true){
         string tmp_str = build_string(cur_dist, pos);
         send_to_pc(tmp_str);
-        // auxiliary logic, turn on the flash light when the distance is above 100cm.
-        // if(cur_dist > 100){
-        //   digitalWrite(FLASHLIGHT_PIN, HIGH);
-        // } else {
-        //   digitalWrite(FLASHLIGHT_PIN, LOW);
-        // }
       }
     }
     // sweep right.
     for(int pos=sys_max_angle; pos>=sys_min_angle; pos--){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
-      if(cur_dist > sys_min_dist && cur_dist < sys_max_dist){
+      if((cur_dist > sys_min_dist && cur_dist < sys_max_dist) || true){
         string tmp_str = build_string(cur_dist, pos);
         send_to_pc(tmp_str);
-        // auxiliary logic, turn on the flash light when the distance is above 100cm.
-        // if(cur_dist > 100){
-        //   digitalWrite(FLASHLIGHT_PIN, HIGH);
-        // } else {
-        //   digitalWrite(FLASHLIGHT_PIN, LOW);
-        // }
       }
     }
   }
   if(Serial.available() > 0) { // Check if new data is available to read
-    delay(100); // wait for all of the information to arrive by serial communication.
     Serial.readBytes(metrics, NUM_OF_PC_INPUTS);
     update_sys_metrics();
-    blink_times(3);
-    // string str = "recieved new metrics!";
-    // send_to_pc(str);
-    // print_sys_metrics();
-    delay(100);
   }
 }

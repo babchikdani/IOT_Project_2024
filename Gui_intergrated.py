@@ -43,7 +43,6 @@ def send_metrics(speed=1, max_angle=180, min_angle=0, max_dist=700, min_dist=50,
     ser.flushOutput()
     ser.write(data_to_send)
     print('Data sent successfully.')
-    time.sleep(0.1)
 
 
 class RadarControlApp:
@@ -63,12 +62,14 @@ class RadarControlApp:
 
         self.max_angle_label = tk.Label(root, text="Maximum Scan Angle:", font=self.label_font)
         self.max_angle_scale = tk.Scale(root, from_=0, to=180, orient="horizontal", resolution=1)
+        self.max_angle_scale.set(180)
 
         self.min_angle_label = tk.Label(root, text="Minimum Scan Angle:", font=self.label_font)
         self.min_angle_scale = tk.Scale(root, from_=0, to=180, orient="horizontal", resolution=1)
 
         self.max_dist_label = tk.Label(root, text="Maximum Scan Distance [cm]:", font=self.label_font)
         self.max_dist_scale = tk.Scale(root, from_=50, to=800, orient="horizontal", resolution=1)
+        self.max_dist_scale.set(800)
 
         self.min_dist_label = tk.Label(root, text="Minimum Scan Distance [cm]:", font=self.label_font)
         self.min_dist_scale = tk.Scale(root, from_=50, to=800, orient="horizontal", resolution=1)
@@ -134,8 +135,11 @@ class RadarControlApp:
             continue
         incoming_data = ser.readline().decode()
         read_data = incoming_data.split('_')      # remove the '\n' in the back
-        self.current_angle = int(read_data[1][:-1])
-        return int(read_data[0])
+        dist = int(read_data[0])
+        angle = int(read_data[1])
+        # new_target = int(read_data[2][:-1])
+        self.current_angle = angle
+        return dist
 
     def check_scales_input(self):
         if self.min_angle_scale.get() > self.max_angle_scale.get():
@@ -173,20 +177,15 @@ class RadarControlApp:
         self.disable_scales()
         # 1. send a start_room_scan to the serial (sys_start_cmd = 2)
         ser.flushOutput()
+        ser.flushInput()
         send_metrics(cmd=ROOM_SCAN_CMD)  # maybe move the send_metrics() to self.send_metrics()
         # Check if there's any response from the device
         time.sleep(5)
         if ser.in_waiting > 0:
             # Read the response. The respone MUST END WITH '\n'!
-            time.sleep(0.5)
+            time.sleep(0.3)
             response = ser.readline().decode()
             print("Received:", response)
-            # Process the response here
-            # Example: If response is 'OK', break the loop
-            if response != ROOM_SCAN_DONE_SIGNAL:
-                print("Received Room Scan confirmation!")
-            else:
-                print('Gibberish')
         print("System ready.")
         self.enable_scales()
         self.radar_canvas.delete("initial_scanning")
@@ -240,9 +239,7 @@ class RadarControlApp:
             self.radar_canvas.delete("line")  # Clear previous line
             self.radar_canvas.create_line(CENTER_X, CENTER_Y, x, y, fill="green1", width=1, tags="line")
             self.root.update()  # Update the display
-            self.root.after(1, self.update_radar_display)  # Recursive call for animation
-
-        # send_metrics()  # try to send
+            self.root.after(10, self.update_radar_display)  # Recursive call for animation
 
 
 if __name__ == "__main__":
