@@ -225,12 +225,12 @@ class RadarControlApp:
         if self.scanning:
             # Simulate radar scan motion (single sweep line)
             dist = self.read_uart()
-            if dist > 0:
+            if dist >= 0:
                 print(f"Found object in dist:{dist}, and angle:{self.current_angle}")
                 x_target = CENTER_X + dist * math.cos(math.radians(self.current_angle))/2
                 y_target = CENTER_Y - dist * math.sin(math.radians(self.current_angle))/2  # Adjusted for upper side
                 self.radar_canvas.create_oval(x_target - 5, y_target - 5, x_target + 5, y_target + 5, width=2,
-                                              fill="red", tags=f"blip_{self.blip_id}")
+                                              fill="green", tags=f"blip_{self.blip_id}")
                 self.root.after(5000, self.radar_canvas.delete, f"blip_{self.blip_id}")
                 self.blip_id += 1
             # Update the scan line

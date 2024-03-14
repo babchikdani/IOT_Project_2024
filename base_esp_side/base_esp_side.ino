@@ -56,13 +56,17 @@ inline void room_scan(){
 inline int read_distance(){
   uint8_t buf[9] = {0}; // An array that holds data
   uint16_t distance;
-  if (lidarSerial.available() > 0) {
+  // while(lidarSerial.available() < 9) {}
+  if (lidarSerial.available() >= 9) {
     lidarSerial.readBytes(buf, 9); // Read 9 bytes of data
     if( buf[0] == 0x59 && buf[1] == 0x59)
     {
       distance = buf[2] + buf[3] * 256;
       // uint16_t strength = buf[4] + buf[5] * 256;
       // int16_t temperature = buf[6] + buf[7] * 256;
+    } else {
+      lidarSerial.flush();
+      distance=777;
     }
   }
   delay(10);
@@ -99,7 +103,7 @@ inline void blink_times(int n){
 
 // builds a string xxx_yyy where xxx is the distance, yyy is the angle. Example: distance of 15 cm will be presented as 015 (with the leading zero)
 inline string build_string(int dist, int angle){
-  string dist_str = std::to_string(dist);
+  string dist_str = std::to_string(dist); 
   // fill zeros if needed.
   while(dist_str.size() < 3){
     dist_str = "0"+dist_str;
@@ -120,8 +124,16 @@ void setup() {
   Serial.setTxBufferSize(BUFFER_SIZE);
   Serial.setRxBufferSize(BUFFER_SIZE);
   Serial.begin(SERIAL_BAUD_RATE); // Initializing serial port
-  // lidarSerial.setRxBufferSize(BUFFER_SIZE);
+  lidarSerial.setRxBufferSize(BUFFER_SIZE);
   // lidarSerial.setTxBufferSize(BUFFER_SIZE);
+  // lidarSerial.setRxFIFOFull(252);
+  // int low_power_mode_on = 0x5A06350100; // low power consumption mode on
+  // int low_power_mode_off = 0x5A06350000; // low power consumption mode off
+  // lidarSerial.write(low_power_mode_off);
+  // delay(50);
+  // int save_settings = 0x5A04116F;
+  // lidarSerial.write(save_settings);
+  // delay(50);
   lidarSerial.begin(LIDAR_BAUD_RATE, SERIAL_8N1, RX_PIN, TX_PIN); // Initializing serial port
   servo_init();
   pinMode(LED_BUILTIN, OUTPUT);
@@ -159,6 +171,8 @@ void loop() {
     for(int pos=sys_max_angle; pos>=sys_min_angle; pos--){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
+      // string angle_str = std::to_string(pos);
+      // send_to_pc(angle_str);
       if((cur_dist > sys_min_dist && cur_dist < sys_max_dist) || true){
         string tmp_str = build_string(cur_dist, pos);
         send_to_pc(tmp_str);
