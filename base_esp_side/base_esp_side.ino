@@ -28,7 +28,7 @@ int servoPin = 15;
 
 HardwareSerial lidarSerial(2); // Using serial port 2
 
-int sys_speed=0;     // 1, 2, or 3.
+int sys_speed=1;     // 1, 2, or 3.
 int sys_max_angle=0; // in degrees.
 int sys_min_angle=0; // in degrees.
 int sys_max_dist=0;  // in centimeters.
@@ -65,7 +65,6 @@ inline int read_distance(){
       // uint16_t strength = buf[4] + buf[5] * 256;
       // int16_t temperature = buf[6] + buf[7] * 256;
     } else {
-      lidarSerial.flush();
       distance=777;
     }
   }
@@ -162,6 +161,10 @@ void loop() {
     for(int pos=sys_min_angle; pos<=sys_max_angle; pos++){
       move_servo_to(pos);
       cur_dist = read_distance();   // in cm
+      while(!(cur_dist > sys_min_dist && cur_dist < sys_max_dist)){
+        cur_dist = read_distance();   // in cm
+      }
+      lidarSerial.flush();
       if((cur_dist > sys_min_dist && cur_dist < sys_max_dist) || true){
         string tmp_str = build_string(cur_dist, pos);
         send_to_pc(tmp_str);
@@ -170,7 +173,13 @@ void loop() {
     // sweep right.
     for(int pos=sys_max_angle; pos>=sys_min_angle; pos--){
       move_servo_to(pos);
+
+      
       cur_dist = read_distance();   // in cm
+      while(!(cur_dist > sys_min_dist && cur_dist < sys_max_dist)){
+        cur_dist = read_distance();   // in cm
+      }
+      lidarSerial.flush();
       // string angle_str = std::to_string(pos);
       // send_to_pc(angle_str);
       if((cur_dist > sys_min_dist && cur_dist < sys_max_dist) || true){

@@ -229,9 +229,11 @@ class RadarControlApp:
                 print(f"Found object in dist:{dist}, and angle:{self.current_angle}")
                 x_target = CENTER_X + dist * math.cos(math.radians(self.current_angle))/2
                 y_target = CENTER_Y - dist * math.sin(math.radians(self.current_angle))/2  # Adjusted for upper side
-                self.radar_canvas.create_oval(x_target - 5, y_target - 5, x_target + 5, y_target + 5, width=2,
-                                              fill="green", tags=f"blip_{self.blip_id}")
-                self.root.after(5000, self.radar_canvas.delete, f"blip_{self.blip_id}")
+                # Animate a fading effect of the blip
+                for i in range(4):
+                    self.radar_canvas.create_oval(x_target - 5, y_target - 5, x_target + 5, y_target + 5, width=2,
+                                              fill=f"red{4-i}", tags=f"blip_{self.blip_id}_{i+1}")
+                    self.root.after(5000-1000*(i+1), self.radar_canvas.delete, f"blip_{self.blip_id}_{i+1}")
                 self.blip_id += 1
             # Update the scan line
             x = CENTER_X + LINE_LENGTH * math.cos(math.radians(self.current_angle))
