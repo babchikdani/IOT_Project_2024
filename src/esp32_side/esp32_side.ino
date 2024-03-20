@@ -36,10 +36,13 @@ inline void read_and_send_distance() {
       if (distance > LIDAR_MAX_READ_DISTANCE) distance = 0;
       // uint16_t strength = buf[4] + buf[5] * 256;
       // int16_t temperature = buf[6] + buf[7] * 256;
-
+      // TODO: if signal strenth is below 100 then the reading is unreliable!
       //TODO: add basic weighting system to determine the true distance from an object
       if (counter > 10) {  // sends the 10th reading only, to slow down the buffer filling rate
         string dist_str = std::to_string(distance);
+        while(dist_str.size() < 3){
+          dist_str = "0" + dist_str;
+        }
         for (int i = 0; i < dist_str.size(); i++) {
           Serial.write(dist_str[i]);
         }

@@ -21,6 +21,7 @@ START_CMD = 1
 ROOM_SCAN_CMD = 2
 DISTANCE_BYTES = 4
 ANGLE_BYTES = 1
+STAY_THE_SAME = 2
 FULL_SCAN_DEGREES = 181
 HIGH_SPEED = 3
 MED_SPEED = 2
@@ -29,20 +30,20 @@ LOW_SPEED = 1
 
 
 
-def send_metrics(speed=1, max_angle=180, min_angle=0, cmd=1, send_to_esp32=0, send_to_arduino=0, ack=0):
+def send_metrics(speed=1, max_angle=180, min_angle=0, cmd=STAY_THE_SAME, to_esp32=0, to_arduino=0, ack=0):
     # Send the data to the ESP32
     speed_byte = speed.to_bytes(1, 'little')
     min_angle_byte = min_angle.to_bytes(1, 'little')
     max_angle_byte = max_angle.to_bytes(1, 'little')
     cmd_byte = cmd.to_bytes(1, 'little')
     ack_byte = ack.to_bytes(1, 'little')
-    if send_to_esp32:
+    if to_esp32:
         bytes_list_esp32 = [cmd_byte]
         data_to_send_esp32 = b''.join(bytes_list_esp32)
         esp32_serial.flushOutput()
         esp32_serial.write(data_to_send_esp32)
         print("Data was sent successfully to esp32")
-    if send_to_arduino:
+    if to_arduino:
         bytes_list_arduino = [speed_byte, max_angle_byte, min_angle_byte, cmd_byte, ack_byte]
         data_to_send_arduino = b''.join(bytes_list_arduino)
         arduino_serial.flushOutput()
@@ -50,55 +51,34 @@ def send_metrics(speed=1, max_angle=180, min_angle=0, cmd=1, send_to_esp32=0, se
         print("Data was sent successfully to arduino")
 
 
-def send_ack(to_esp=0, to_arduino=0):
-    ack = 1
-    ack_byte = ack.to_bytes(1, 'little')
-    bytes_list = [ack_byte]
-    data_to_send = b''.join(bytes_list)
-    if to_esp:
-        # print('Send ACK to ESP32')
-        esp32_serial.flushOutput()
-        esp32_serial.write(data_to_send)
-    if to_arduino:
-        # print('Send ACK to Arduino')
-        arduino_serial.flushOutput()
-        arduino_serial.write(data_to_send)
+# def send_ack(to_esp=0, to_arduino=0):
+#     ack = 1
+#     ack_byte = ack.to_bytes(1, 'little')
+#     bytes_list = [ack_byte]
+#     data_to_send = b''.join(bytes_list)
+#     if to_esp:
+#         # print('Send ACK to ESP32')
+#         esp32_serial.flushOutput()
+#         esp32_serial.write(data_to_send)
+#     if to_arduino:
+#         # print('Send ACK to Arduino')
+#         arduino_serial.flushOutput()
+#         arduino_serial.write(data_to_send)
 
 
 def read_servo():
     while arduino_serial.in_waiting < ANGLE_BYTES:
         pass
     angle = int.from_bytes(arduino_serial.read(1), byteorder='little', signed=False)
-    # if incoming_data[-1] == '\n':
-    #     incoming_data = incoming_data[:-1]
-    # if incoming_data[-1] == '\r':
-    #     incoming_data = incoming_data[:-1]
-    # print("incoming_data:", incoming_data)
-    print('read_servo got:', angle)
-    # print('as int is is', int(incoming_data))
-    # angle = int(incoming_data)
-    # print("angle:", angle)
     return angle
 
 
 def read_lidar():
-    # esp32_serial.flushOutput()
-    # esp32_serial.flushInput()
-    while esp32_serial.in_waiting < 4:
-        # print('in read_lidar while loop')
+    while esp32_serial.in_waiting < DISTANCE_BYTES:
         pass
-    incoming_data = esp32_serial.readline().decode()
-    # if incoming_data[-1] == '\n':
-    #     incoming_data = incoming_data[:-1]
-    # if incoming_data[-1] == '\r':
-    #     incoming_data = incoming_data[:-1]
+    incoming_data = esp32_serial.readline().decode()        # distance is a new-line terminated string
     dist = int(incoming_data)
-    # print("dist:", dist)
     return dist
-
-
-
-
 
 
 class RadarControlApp:
@@ -248,17 +228,16 @@ class RadarControlApp:
                                               font=("Arial", 50, "bold"), tags="initial_scanning")
                 self.radar_canvas.update()
                 send_metrics(speed=HIGH_SPEED, max_angle=int(self.max_angle_scale.get()),
-                             min_angle=int(self.min_angle_scale.get()), send_to_arduino=1, send_to_esp32=1,
-                             cmd=START_CMD)
+                             min_angle=int(self.min_angle_scale.get()), to_arduino=1, to_esp32=1, cmd=START_CMD)
                 for i in range(FULL_SCAN_DEGREES):
                     self.current_angle = read_servo()
+                    send_metrics(ack=1, to_arduino=1, cmd=STAY_THE_SAME)  # tell the arduino its ok to move
                     tmp_dist = read_lidar()
                     # get only good readings!
                     while tmp_dist == 0:
                         tmp_dist = read_lidar()
                     self.room_scan_data[i] = tmp_dist
                     print('at angle:', self.current_angle, 'distance:', self.room_scan_data[i])
-                    send_ack(to_arduino=1)  # tell the arduino its ok to move
                 # send_metrics(send_to_esp32=1, send_to_arduino=1, cmd=STOP_CMD)
                 # esp32_serial.flushOutput()
                 # esp32_serial.flushInput()
@@ -269,13 +248,13 @@ class RadarControlApp:
             # Start radar scanning logic here
             print("Radar scanning started.")
             send_metrics(speed=int(self.speed_scale.get()), max_angle=int(self.max_angle_scale.get()),
-                         min_angle=int(self.min_angle_scale.get()), cmd=START_CMD, send_to_esp32=1, send_to_arduino=1)
+                         min_angle=int(self.min_angle_scale.get()), cmd=START_CMD, to_esp32=1, to_arduino=1)
             self.update_radar_display()
 
     def stop_scan(self):
         if self.scanning:
             # Stop radar scanning logic here
-            send_metrics(cmd=STOP_CMD, send_to_arduino=1, send_to_esp32=1)
+            send_metrics(cmd=STOP_CMD, to_arduino=1, to_esp32=1)
             print("Radar scanning stopped.")
             self.enable_scales()
             self.scanning = False
@@ -290,11 +269,8 @@ class RadarControlApp:
             print('request lidar')
             dist = read_lidar()
             print('request servo')
-            while arduino_serial.in_waiting < 1:
-                pass
-            read_data = arduino_serial.read(1)
-            self.current_angle = int.from_bytes(read_data, byteorder='little', signed=False)
-            send_ack(to_arduino=1)  # send ack to the arduino, to inc/dec the servo motor
+            self.current_angle = read_servo()
+            send_metrics(to_arduino=1, ack=1)  # send ack to the arduino, to inc/dec the servo motor
             if self.max_dist_scale.get() >= dist >= self.min_dist_scale.get():
                 print(f"Found object in dist:{dist}, and angle:{self.current_angle}")
                 x_target = CENTER_X + dist * math.cos(math.radians(self.current_angle))/2

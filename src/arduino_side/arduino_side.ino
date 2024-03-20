@@ -10,6 +10,7 @@
 #define NEW
 #define BUFFER_SIZE 5
 #define MIN_PWM 544
+#define STAY_THE_SAME 2
 #define MAX_PWM 2400
 #define INPUT_BYTES 5
 Servo myservo;
@@ -32,7 +33,9 @@ inline void update_sys_metrics() {
   sys_speed = buf[0];
   sys_max_angle = buf[1];
   sys_min_angle = buf[2];
-  sys_cmd = buf[3];
+  if(buf[3] != STAY_THE_SAME){
+    sys_cmd = buf[3];
+  }
   sys_ack = buf[4];
 }
 
@@ -68,17 +71,6 @@ inline void wait_for_angle_ack() {
   }
   else if (sys_ack != ACK) {  // didn't recieved ack from PC!
     blink_forver();      // system error.
-  }
-}
-
-inline void blink_times(int n) {
-  int i = 0;
-  while (i < n) {
-    digitalWrite(LED_BUILTIN, HIGH);
-    delay(100);
-    digitalWrite(LED_BUILTIN, LOW);
-    delay(100);
-    i++;
   }
 }
 
