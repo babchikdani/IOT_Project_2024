@@ -57,12 +57,6 @@ inline void read_and_send_distance() {
   delay(5);
 }
 
-inline void check_input(uint8_t in) {
-  if (in != ON && in != OFF) {
-    blink_forever();
-  }
-}
-
 inline void empty_serial_buffer() {
   while (Serial.available() > 0) {
     Serial.read();

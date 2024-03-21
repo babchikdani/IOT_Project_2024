@@ -1,18 +1,21 @@
 #include <Servo.h>
 
-
-#define INIT_SYSTEM 3
-#define ROOM_SCAN_CMD 2
-#define ON 1
+// commands:
 #define OFF 0
+#define ON 1
+#define CONTINUE 2
+#define RESET 3
+
+// Sizes
+#define INPUT_BYTES 6
 #define ACK_SIZE 1
 #define ACK 1
-#define NEW
-#define BUFFER_SIZE 5
+#define BUFFER_SIZE 6
+
+// Servo defines
 #define MIN_PWM 544
-#define STAY_THE_SAME 2
 #define MAX_PWM 2400
-#define INPUT_BYTES 5
+
 Servo myservo;
 int servoPin = 9;
 
@@ -21,6 +24,7 @@ uint8_t sys_max_angle = 180;
 uint8_t sys_min_angle = 0;
 uint8_t sys_cmd = OFF;
 uint8_t sys_ack = 0;
+uint8_t sys_reset = 0; 
 uint8_t buf[BUFFER_SIZE] = { 0 };
 int initial_room_scan_done = 0;
 
@@ -33,10 +37,11 @@ inline void update_sys_metrics() {
   sys_speed = buf[0];
   sys_max_angle = buf[1];
   sys_min_angle = buf[2];
-  if(buf[3] != STAY_THE_SAME){
+  if(buf[3] != CONTINUE){
     sys_cmd = buf[3];
   }
   sys_ack = buf[4];
+  sys_reset = buf[5];
 }
 
 inline void blink_forver() {
@@ -69,9 +74,9 @@ inline void wait_for_angle_ack() {
   if(sys_cmd == OFF && old_sys_cmd == ON){
 
   }
-  else if (sys_ack != ACK) {  // didn't recieved ack from PC!
-    blink_forver();      // system error.
-  }
+  // else if (sys_ack != ACK) {  // didn't recieved ack from PC!
+  //   blink_forver();      // system error.
+  // }
 }
 
 inline void initial_room_scan() {
@@ -97,13 +102,13 @@ void loop() {
   if (sys_cmd == ON) {
     digitalWrite(LED_BUILTIN, HIGH);
     // sweep left:
-    for (int pos = 0; pos <= 180; pos++) {
+    for (int pos = 0; pos <= 180 && sys_cmd == ON; pos++) {
       move_servo_to(pos);
       send_angle_to_pc((uint8_t)pos);
       wait_for_angle_ack();
     }
     // sweep right:
-    for (int pos = 180; pos >= 0; pos--) {
+    for (int pos = 180; pos >= 0 && sys_cmd == ON; pos--) {
       move_servo_to(pos);
       send_angle_to_pc((uint8_t)pos);
       wait_for_angle_ack();
@@ -116,7 +121,11 @@ void loop() {
   if (Serial.available() >= INPUT_BYTES) {  // read new metrics
     Serial.readBytes(buf, BUFFER_SIZE);
     update_sys_metrics();
-    if(!initial_room_scan_done) {
+    if(sys_reset == 1){
+      initial_room_scan_done = 0;
+      sys_reset = 0;
+    }
+    if(initial_room_scan_done == 0) {
       initial_room_scan();
       while (Serial.available() < INPUT_BYTES) {} // wait for new command.
       Serial.readBytes(buf, BUFFER_SIZE);

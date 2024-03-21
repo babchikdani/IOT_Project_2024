@@ -3,26 +3,30 @@ import tkinter as tk
 import math
 import serial
 import array
-import sys
 from tkinter import messagebox
 
-#TODO: instead of room scan, replace it with 'reset position or something' button which erases the radar
-# canvas room visual data!
 
+# Tkinter canvas settings
 RADAR_WIDTH = 800
 RADAR_HEIGHT = 400
 CENTER_X = RADAR_WIDTH/2
 CENTER_Y = 400
 LINE_LENGTH = 400
-BAUD_RATE = 115200
-ROOM_SCAN_DONE_SIGNAL = "Room scan done!\n"
+
+# Commands:
 STOP_CMD = 0
 START_CMD = 1
+CONTINUE_CMD = 2
+RESET_CMD = 3
 ROOM_SCAN_CMD = 2
+
+# Serial settings
+BAUD_RATE = 115200
 DISTANCE_BYTES = 4
 ANGLE_BYTES = 1
-STAY_THE_SAME = 2
 FULL_SCAN_DEGREES = 181
+
+# defined speeds
 HIGH_SPEED = 3
 MED_SPEED = 2
 LOW_SPEED = 1
@@ -30,13 +34,14 @@ LOW_SPEED = 1
 
 
 
-def send_metrics(speed=1, max_angle=180, min_angle=0, cmd=STAY_THE_SAME, to_esp32=0, to_arduino=0, ack=0):
+def send_metrics(speed=1, max_angle=180, min_angle=0, cmd=CONTINUE_CMD, to_esp32=0, to_arduino=0, ack=0, reset=0):
     # Send the data to the ESP32
     speed_byte = speed.to_bytes(1, 'little')
     min_angle_byte = min_angle.to_bytes(1, 'little')
     max_angle_byte = max_angle.to_bytes(1, 'little')
     cmd_byte = cmd.to_bytes(1, 'little')
     ack_byte = ack.to_bytes(1, 'little')
+    reset_byte = reset.to_bytes(1, 'little')
     if to_esp32:
         bytes_list_esp32 = [cmd_byte]
         data_to_send_esp32 = b''.join(bytes_list_esp32)
@@ -44,41 +49,23 @@ def send_metrics(speed=1, max_angle=180, min_angle=0, cmd=STAY_THE_SAME, to_esp3
         esp32_serial.write(data_to_send_esp32)
         print("Data was sent successfully to esp32")
     if to_arduino:
-        bytes_list_arduino = [speed_byte, max_angle_byte, min_angle_byte, cmd_byte, ack_byte]
+        bytes_list_arduino = [speed_byte, max_angle_byte, min_angle_byte, cmd_byte, ack_byte, reset_byte]
         data_to_send_arduino = b''.join(bytes_list_arduino)
         arduino_serial.flushOutput()
         arduino_serial.write(data_to_send_arduino)
         print("Data was sent successfully to arduino")
 
 
-# def send_ack(to_esp=0, to_arduino=0):
-#     ack = 1
-#     ack_byte = ack.to_bytes(1, 'little')
-#     bytes_list = [ack_byte]
-#     data_to_send = b''.join(bytes_list)
-#     if to_esp:
-#         # print('Send ACK to ESP32')
-#         esp32_serial.flushOutput()
-#         esp32_serial.write(data_to_send)
-#     if to_arduino:
-#         # print('Send ACK to Arduino')
-#         arduino_serial.flushOutput()
-#         arduino_serial.write(data_to_send)
-
-
 def read_servo():
     while arduino_serial.in_waiting < ANGLE_BYTES:
         pass
-    angle = int.from_bytes(arduino_serial.read(1), byteorder='little', signed=False)
-    return angle
+    return int.from_bytes(arduino_serial.read(1), byteorder='little', signed=False)  # reads 1 byte angle from the servo
 
 
 def read_lidar():
     while esp32_serial.in_waiting < DISTANCE_BYTES:
         pass
-    incoming_data = esp32_serial.readline().decode()        # distance is a new-line terminated string
-    dist = int(incoming_data)
-    return dist
+    return int(esp32_serial.readline().decode())  # distance is a new-line terminated string
 
 
 class RadarControlApp:
@@ -106,11 +93,11 @@ class RadarControlApp:
         self.min_angle_scale = tk.Scale(root, from_=0, to=180, orient="horizontal", resolution=1)
 
         self.max_dist_label = tk.Label(root, text="Maximum Scan Distance [cm]:", font=self.label_font)
-        self.max_dist_scale = tk.Scale(root, from_=50, to=800, orient="horizontal", resolution=1)
+        self.max_dist_scale = tk.Scale(root, from_=30, to=800, orient="horizontal", resolution=1)
         self.max_dist_scale.set(800)
 
         self.min_dist_label = tk.Label(root, text="Minimum Scan Distance [cm]:", font=self.label_font)
-        self.min_dist_scale = tk.Scale(root, from_=50, to=800, orient="horizontal", resolution=1)
+        self.min_dist_scale = tk.Scale(root, from_=30, to=800, orient="horizontal", resolution=1)
 
         self.start_button = tk.Button(root, text="Start Scan", command=self.start_scan, bg="green", width=20, height=2,
                                       font=("Arial", 12, "italic"))
@@ -204,11 +191,15 @@ class RadarControlApp:
             self.radar_canvas.update()
 
     def reset_scan(self):
-        self.stop_scan()
-        self.first_scan = True
-        for i in range(FULL_SCAN_DEGREES):
-            self.room_scan_data[i] = 0
-        self.radar_canvas.delete("surroundings")
+        if self.scanning:
+            tk.messagebox.showwarning("Warning", "Can't reset while system is running")
+        else:
+            self.stop_scan()
+            self.first_scan = True
+            for i in range(FULL_SCAN_DEGREES):
+                self.room_scan_data[i] = 0
+            self.radar_canvas.delete("surroundings")
+            send_metrics(cmd=STOP_CMD, to_arduino=1, reset=1)
 
 
     def start_scan(self):
@@ -227,20 +218,17 @@ class RadarControlApp:
                 self.radar_canvas.create_text(400, 200, text="Initial Room Scan", fill="wheat",
                                               font=("Arial", 50, "bold"), tags="initial_scanning")
                 self.radar_canvas.update()
-                send_metrics(speed=HIGH_SPEED, max_angle=int(self.max_angle_scale.get()),
+                send_metrics(speed=HIGH_SPEED, max_angle=int(self.max_angle_scale.get()), reset=1,
                              min_angle=int(self.min_angle_scale.get()), to_arduino=1, to_esp32=1, cmd=START_CMD)
                 for i in range(FULL_SCAN_DEGREES):
                     self.current_angle = read_servo()
-                    send_metrics(ack=1, to_arduino=1, cmd=STAY_THE_SAME)  # tell the arduino its ok to move
+                    send_metrics(ack=1, to_arduino=1, cmd=CONTINUE_CMD)  # tell the arduino its ok to move
                     tmp_dist = read_lidar()
                     # get only good readings!
                     while tmp_dist == 0:
                         tmp_dist = read_lidar()
                     self.room_scan_data[i] = tmp_dist
                     print('at angle:', self.current_angle, 'distance:', self.room_scan_data[i])
-                # send_metrics(send_to_esp32=1, send_to_arduino=1, cmd=STOP_CMD)
-                # esp32_serial.flushOutput()
-                # esp32_serial.flushInput()
                 self.first_scan = False
                 self.radar_canvas.delete("initial_scanning")
                 self.draw_surroundings()
@@ -255,6 +243,7 @@ class RadarControlApp:
         if self.scanning:
             # Stop radar scanning logic here
             send_metrics(cmd=STOP_CMD, to_arduino=1, to_esp32=1)
+            send_metrics(cmd=RESET_CMD, to_arduino=1)
             print("Radar scanning stopped.")
             self.enable_scales()
             self.scanning = False
@@ -271,7 +260,7 @@ class RadarControlApp:
             print('request servo')
             self.current_angle = read_servo()
             send_metrics(to_arduino=1, ack=1)  # send ack to the arduino, to inc/dec the servo motor
-            if self.max_dist_scale.get() >= dist >= self.min_dist_scale.get():
+            if self.room_scan_data[self.current_angle] * 0.98 >= float(dist):
                 print(f"Found object in dist:{dist}, and angle:{self.current_angle}")
                 x_target = CENTER_X + dist * math.cos(math.radians(self.current_angle))/2
                 y_target = CENTER_Y - dist * math.sin(math.radians(self.current_angle))/2  # Adjusted for upper side
