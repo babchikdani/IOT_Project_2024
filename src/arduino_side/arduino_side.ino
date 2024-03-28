@@ -26,7 +26,7 @@ uint8_t sys_max_angle = 180;
 uint8_t sys_min_angle = 0;
 uint8_t sys_cmd = OFF;
 uint8_t sys_ack = 0;
-uint8_t sys_reset = 0; 
+uint8_t sys_reset = 0;
 uint8_t sys_target_angle = 0;
 uint8_t buf[BUFFER_SIZE] = { 0 };
 int initial_room_scan_done = 0;
@@ -40,7 +40,7 @@ inline void update_sys_metrics() {
   sys_speed = buf[0];
   sys_max_angle = buf[1];
   sys_min_angle = buf[2];
-  if(buf[3] != CONTINUE){
+  if (buf[3] != CONTINUE) {
     sys_cmd = buf[3];
   }
   sys_ack = buf[4];
@@ -74,9 +74,8 @@ inline void wait_for_angle_ack() {
   uint8_t old_sys_cmd = sys_cmd;
   // read the ack:
   Serial.readBytes(buf, INPUT_BYTES);
-  update_sys_metrics(); // updates the sys_ack
-  if(sys_cmd == OFF && old_sys_cmd == ON){
-
+  update_sys_metrics();  // updates the sys_ack
+  if (sys_cmd == OFF && old_sys_cmd == ON) {
   }
   // else if (sys_ack != ACK) {  // didn't recieved ack from PC!
   //   blink_forver();      // system error.
@@ -108,11 +107,43 @@ void setup() {
 void loop() {
   if (sys_cmd == ON) {
     digitalWrite(LED_BUILTIN, HIGH);
+    ///////
+    move_servo_to(0);
+    send_angle_to_pc((uint8_t)0);
+    wait_for_angle_ack();
+    ///////
+    while (true) {
+      while (Serial.available() < INPUT_BYTES) {}  // wait for new command.
+      Serial.readBytes(buf, BUFFER_SIZE);
+      update_sys_metrics();
+      if (sys_cmd == ON) { break; }
+
+      if (sys_cmd == MOVE_TO_ANGLE) {
+        move_servo_to(sys_target_angle);
+        digitalWrite(LASER_PIN, HIGH);
+        delay(1000);
+        digitalWrite(LASER_PIN, LOW);
+      }
+    }
     // sweep left:
     for (int pos = 0; pos <= 180 && sys_cmd == ON; pos++) {
       move_servo_to(pos);
       send_angle_to_pc((uint8_t)pos);
       wait_for_angle_ack();
+    }
+    // wait for pc insights for the last scan
+    while (true) {
+      while (Serial.available() < INPUT_BYTES) {}  // wait for new command.
+      Serial.readBytes(buf, BUFFER_SIZE);
+      update_sys_metrics();
+      if (sys_cmd == ON) { break; }
+
+      if (sys_cmd == MOVE_TO_ANGLE) {
+        move_servo_to(sys_target_angle);
+        digitalWrite(LASER_PIN, HIGH);
+        delay(1000);
+        digitalWrite(LASER_PIN, LOW);
+      }
     }
     // sweep right:
     for (int pos = 180; pos >= 0 && sys_cmd == ON; pos--) {
@@ -123,9 +154,9 @@ void loop() {
   }
   if (sys_cmd == OFF) {
     digitalWrite(LED_BUILTIN, LOW);
-    while (Serial.available() < INPUT_BYTES) {} // wait for new command.
+    while (Serial.available() < INPUT_BYTES) {}  // wait for new command.
   }
-  if(sys_cmd == MOVE_TO_ANGLE){
+  if (sys_cmd == MOVE_TO_ANGLE) {
     move_servo_to(sys_target_angle);
     digitalWrite(LASER_PIN, HIGH);
     delay(1000);
@@ -135,13 +166,13 @@ void loop() {
   if (Serial.available() >= INPUT_BYTES) {  // read new metrics
     Serial.readBytes(buf, BUFFER_SIZE);
     update_sys_metrics();
-    if(sys_reset == 1){
+    if (sys_reset == 1) {
       initial_room_scan_done = 0;
       sys_reset = 0;
     }
-    if(initial_room_scan_done == 0) {
+    if (initial_room_scan_done == 0) {
       initial_room_scan();
-      while (Serial.available() < INPUT_BYTES) {} // wait for new command.
+      while (Serial.available() < INPUT_BYTES) {}  // wait for new command.
       Serial.readBytes(buf, BUFFER_SIZE);
       update_sys_metrics();
     }

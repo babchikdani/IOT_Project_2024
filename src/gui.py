@@ -292,12 +292,14 @@ class RadarControlApp:
             self.root.after(10, self.update_radar_display)  # Recursive call for animation
 
     def check_last_scan(self):
+        prev_angle = self.current_angle
         for i in range(FULL_SCAN_DEGREES):
-            print(f'self.last_scan[{i}] = ', self.last_scan[i])
-            print(f'self.room_scan_data[{i}] = ', self.room_scan_data[i])
-            time.sleep(0.1)
             if abs(self.last_scan[i] - self.room_scan_data[i]) > 20:
-                send_metrics(cmd=MOVE_TO_ANGLE_CMD, to_arduino=1, target_angle=i)
+                print(f"Found difference: self.last_scan[{i}]({self.last_scan[i]}), self.room_scan_data[{i}]({self.room_scan_data[i]}) ")
+                send_metrics(cmd=MOVE_TO_ANGLE_CMD, to_arduino=1, target_angle=i, ack=1)
+        if prev_angle != self.current_angle:
+            send_metrics(cmd=MOVE_TO_ANGLE_CMD, to_arduino=1, target_angle=prev_angle, ack=1)
+        send_metrics(to_arduino=1, to_esp32=1, cmd=START_CMD)
 
 
 if __name__ == "__main__":
