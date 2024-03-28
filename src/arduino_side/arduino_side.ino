@@ -5,12 +5,14 @@
 #define ON 1
 #define CONTINUE 2
 #define RESET 3
+#define MOVE_TO_ANGLE 4
 
 // Sizes
-#define INPUT_BYTES 6
+#define INPUT_BYTES 7
 #define ACK_SIZE 1
 #define ACK 1
-#define BUFFER_SIZE 6
+#define BUFFER_SIZE 7
+#define LASER_PIN 13
 
 // Servo defines
 #define MIN_PWM 544
@@ -25,6 +27,7 @@ uint8_t sys_min_angle = 0;
 uint8_t sys_cmd = OFF;
 uint8_t sys_ack = 0;
 uint8_t sys_reset = 0; 
+uint8_t sys_target_angle = 0;
 uint8_t buf[BUFFER_SIZE] = { 0 };
 int initial_room_scan_done = 0;
 
@@ -42,6 +45,7 @@ inline void update_sys_metrics() {
   }
   sys_ack = buf[4];
   sys_reset = buf[5];
+  sys_target_angle = buf[6];
 }
 
 inline void blink_forver() {
@@ -95,6 +99,9 @@ void setup() {
   Serial.begin(115200);
   myservo.attach(servoPin, MIN_PWM, MAX_PWM);
   pinMode(LED_BUILTIN, OUTPUT);
+  pinMode(LASER_PIN, OUTPUT);
+  digitalWrite(LASER_PIN, LOW);
+  digitalWrite(LED_BUILTIN, LOW);
   empty_serial_buffer();
 }
 
@@ -117,6 +124,13 @@ void loop() {
   if (sys_cmd == OFF) {
     digitalWrite(LED_BUILTIN, LOW);
     while (Serial.available() < INPUT_BYTES) {} // wait for new command.
+  }
+  if(sys_cmd == MOVE_TO_ANGLE){
+    move_servo_to(sys_target_angle);
+    digitalWrite(LASER_PIN, HIGH);
+    delay(1000);
+    digitalWrite(LASER_PIN, LOW);
+    sys_cmd = OFF;
   }
   if (Serial.available() >= INPUT_BYTES) {  // read new metrics
     Serial.readBytes(buf, BUFFER_SIZE);
